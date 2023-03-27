@@ -8,11 +8,12 @@ def generate_launch_description():
         DeclareLaunchArgument('drone_id', default_value='drone0'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         Node(
-            package='as2_node_template',
-            executable='as2_node_template_node',
-            name='as2_node_template',
+            package='as2_external_object_to_tf',
+            executable='as2_external_object_to_tf_node',
+            name='as2_external_object_to_tf',
             namespace=LaunchConfiguration('drone_id'),
-            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')},
+                        {'config_file': LaunchConfiguration('config_file')}],
             output='screen',
             emulate_tty=True
         )

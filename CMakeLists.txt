@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-set(PROJECT_NAME as2_node_template)
+set(PROJECT_NAME as2_external_object_to_tf)
 project(${PROJECT_NAME})
 
 # Default to C++14
@@ -20,6 +20,9 @@ set(PROJECT_DEPENDENCIES
   as2_msgs
   std_srvs
   std_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
 )
 
 foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})
@@ -31,13 +34,14 @@ include_directories(
   include/${PROJECT_NAME}
   #uncomment if using Eigen3
   #{EIGEN3_INCLUDE_DIRS} 
+  include/json.hpp
 )
 
 set(SOURCE_CPP_FILES 
-  src/as2_node_template.cpp
+  src/as2_external_object_to_tf.cpp
 )
 
-add_executable(${PROJECT_NAME}_node src/as2_node_template_node.cpp ${SOURCE_CPP_FILES})
+add_executable(${PROJECT_NAME}_node src/as2_external_object_to_tf_node.cpp ${SOURCE_CPP_FILES})
 ament_target_dependencies(${PROJECT_NAME}_node ${PROJECT_DEPENDENCIES})
 
 

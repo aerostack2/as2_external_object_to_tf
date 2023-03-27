@@ -1,3 +1,3 @@
-# as2_node_template
+# as2_external_object_to_tf
 
 Template for Aerostack2 Nodes

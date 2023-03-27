@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>as2_node_template</name>
-  <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="miguel.fernandez.cortizas@upm.es">Miguel Fernandez-Cortizas</maintainer>
+  <name>as2_external_object_to_tf</name>
+  <version>0.0.1</version>
+  <description>Adds external objects pose to tf</description>
+  <maintainer email="javier.mdeza@alumnos.upm.es">Javier Melero Deza</maintainer>
   <license>BDS-3</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
@@ -15,6 +15,9 @@
   <depend>std_msgs</depend>
   <depend>as2_msgs</depend>
   <depend>std_svrs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
 
   <!-- linting test dependencies -->
   <test_depend>ament_lint_auto</test_depend>
