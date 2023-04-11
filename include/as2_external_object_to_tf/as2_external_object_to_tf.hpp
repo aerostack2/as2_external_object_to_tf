@@ -37,16 +37,25 @@
 #include <fstream>
 #include <iostream>
 
+#include <geometry_msgs/msg/transform_stamped.h>
+#include <tf2_msgs/msg/tf_message.h>
+#include <tf2_ros/static_transform_broadcaster.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <geographic_msgs/msg/geo_point.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/services.hpp"
 #include "as2_core/names/topics.hpp"
 #include "as2_core/node.hpp"
+#include "as2_msgs/srv/get_origin.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "sensor_msgs/msg/nav_sat_fix.hpp"
+#include "std_msgs/msg/float32.hpp"
 
 class As2ExternalObjectToTf : public as2::Node {
 public:
   As2ExternalObjectToTf();
+
   using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
   void setupNode();
@@ -57,28 +66,31 @@ public:
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State&) override;
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State&) override;
 
-  struct object {              // Structure declaration
+  struct pose_object {         // Structure declaration
     std::string parent_frame;  // object parent frame
     std::string frame;         // object frame name
-    std::string topic;         // object pose topic
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub;
+  };
+
+  struct gps_object {
+    std::string parent_frame;  // object parent frame
+    std::string frame;         // object frame name
+    rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub;
+    rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr azimuth_sub;
   };
 
 private:
   std::string config_path_;
-  std::vector<object> tf_objects_;
+  std::vector<pose_object> tf_pose_objects_;
+  std::vector<gps_object> tf_gps_objects_;
+  geographic_msgs::msg::GeoPoint::UniquePtr origin_;
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr>
       objects_subscriptions_;
   void loadObjects(const std::string path);
-};
-
-class ObjectSubscriptorCallback {
-public:
-  ObjectSubscriptorCallback(As2ExternalObjectToTf::object obj);
-
   void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr _msg);
-
-private:
-  As2ExternalObjectToTf::object object_;
+  void gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr _msg);
+  void azimuthCallback(const std_msgs::msg::Float32::SharedPtr _msg);
+  rclcpp::Client<as2_msgs::srv::GetOrigin>::SharedPtr get_origin_srv_;
 };
 
 #endif  // AS2_EXTERNAL_OBJECT_TO_TF_HPP_

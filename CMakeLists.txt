@@ -21,6 +21,7 @@ set(PROJECT_DEPENDENCIES
   std_srvs
   std_msgs
   geometry_msgs
+  sensor_msgs
   tf2
   tf2_ros
 )

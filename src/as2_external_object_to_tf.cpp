@@ -44,30 +44,77 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
   std::stringstream buffer;
   buffer << fJson.rdbuf();
   auto json = nlohmann::json::parse(buffer.str());
-  object object_to_load;
   for (auto json_geofence : json["objects"]) {
     // if (!checkValidity(std::size(json_geofence["polygon"]), json_geofence["id"],
     //                    json_geofence["type"])) {
     //   return;
     // } else {
-    object_to_load.parent_frame =
-        (json_geofence["parent_frame"] != NULL) ? json_geofence["parent_frame"] : "earth";
-    object_to_load.frame = json_geofence["frame"];
-    object_to_load.topic = json_geofence["topic"];
-    tf_objects_.push_back(object_to_load);
 
-    RCLCPP_INFO(this->get_logger(), "Object Succesfully loaded from JSON file");
+    std::string type = json_geofence["frame"];
+    try {
+      if (json_geofence["type"] == "pose") {
+        pose_object object_to_load;
+        object_to_load.parent_frame =
+            (!json_geofence["parent_frame"].is_null()) ? json_geofence["parent_frame"] : "earth";
+        object_to_load.frame    = json_geofence["frame"];
+        object_to_load.pose_sub = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+            json_geofence["pose_topic"], as2_names::topics::self_localization::qos,
+            std::bind(&As2ExternalObjectToTf::poseCallback, this, std::placeholders::_1));
+        tf_pose_objects_.push_back(object_to_load);
+
+      } else if (json_geofence["type"] == "gps") {
+        gps_object object_to_load;
+        object_to_load.parent_frame =
+            (!json_geofence["parent_frame"].is_null()) ? json_geofence["parent_frame"] : "earth";
+        object_to_load.frame   = json_geofence["frame"];
+        object_to_load.gps_sub = this->create_subscription<sensor_msgs::msg::NavSatFix>(
+            json_geofence["gps_topic"], as2_names::topics::self_localization::qos,
+            std::bind(&As2ExternalObjectToTf::gpsCallback, this, std::placeholders::_1));
+        object_to_load.azimuth_sub = this->create_subscription<std_msgs::msg::Float32>(
+            json_geofence["azimuth_topic"], as2_names::topics::self_localization::qos,
+            std::bind(&As2ExternalObjectToTf::azimuthCallback, this, std::placeholders::_1));
+        tf_gps_objects_.push_back(object_to_load);
+
+      } else {
+        RCLCPP_WARN(this->get_logger(), "Invalid type for object '%s', types are: pose or gps",
+                    type.c_str());
+      }
+      RCLCPP_INFO(this->get_logger(), "Object '%s' Succesfully loaded from JSON file",
+                  type.c_str());
+
+    } catch (nlohmann::json::exception& e) {
+      RCLCPP_ERROR(this->get_logger(), "Json error: %s", e.what());
+    }
   }
 }
 
 void As2ExternalObjectToTf::setupNode() {
   loadObjects(config_path_);
 
-  for (std::vector<object>::iterator ptr = tf_objects_.begin(); ptr < tf_objects_.end(); ptr++) {
-    object_callback =
-  }
+  if (tf_gps_objects_.size() > 0) {
+    get_origin_srv_ =
+        this->create_client<as2_msgs::srv::GetOrigin>(as2_names::services::gps::get_origin);
+    auto request = std::make_shared<as2_msgs::srv::GetOrigin::Request>();
 
-  return;
+    while (!get_origin_srv_->wait_for_service(std::chrono::seconds(1))) {
+      if (!rclcpp::ok()) {
+        RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+      }
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+    }
+
+    auto result = get_origin_srv_->async_send_request(request);
+    // Wait for the result.
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) ==
+        rclcpp::FutureReturnCode::SUCCESS) {
+      *origin_ = result.get()->origin;
+      RCLCPP_INFO(this->get_logger(), "Origin in: lat: %f, lon %f, alt: %f",
+                  result.get()->origin.latitude, result.get()->origin.longitude,
+                  result.get()->origin.altitude);
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "Failed to call service add_two_ints");
+    }
+  }
 }
 
 void As2ExternalObjectToTf::run() { return; }
@@ -94,9 +141,10 @@ CallbackReturn As2ExternalObjectToTf::on_shutdown(const rclcpp_lifecycle::State&
   return CallbackReturn::SUCCESS;
 };
 
-ObjectSubscriptorCallback::ObjectSubscriptorCallback(As2ExternalObjectToTf::object obj) {
-  object_ = obj;
+void As2ExternalObjectToTf::poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr _msg) {
+  geometry_msgs::msg::TransformStamped transform;
 }
 
-void ObjectSubscriptorCallback::poseCallback(
-    const geometry_msgs::msg::PoseStamped::SharedPtr _msg) {}
+void As2ExternalObjectToTf::gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr _msg) {}
+
+void As2ExternalObjectToTf::azimuthCallback(const std_msgs::msg::Float32::SharedPtr _msg) {}

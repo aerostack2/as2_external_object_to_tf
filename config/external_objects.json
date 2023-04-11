@@ -1,9 +1,10 @@
 {
     "objects": [
         {
+            "type": "pose",
             "parent_frame": "earth",
             "frame": "windmill_0",
-            "topic": "/windmill_0/debug/pose"
+            "pose_topic": "/windmill_0/debug/pose"
         }
     ]
 }
