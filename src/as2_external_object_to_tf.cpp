@@ -35,15 +35,25 @@
 #include "json.hpp"
 
 As2ExternalObjectToTf::As2ExternalObjectToTf() : as2::Node("external_object_to_tf") {
+  this->declare_parameter("namespace", "drone_0");
   this->declare_parameter("config_file", "config/external_objects.json");
   this->get_parameter("config_file", config_path_);
 }
 
+std::unique_ptr<tf2_ros::TransformBroadcaster> As2ExternalObjectToTf::tfBroadcaster = NULL;
+
 auto pose_callback_factory = [](const std::string& frame_id, const std::string& parent_frame_id) {
   return
       [frame_id, parent_frame_id](const geometry_msgs::msg::PoseStamped::SharedPtr _msg) -> void {
-        printf("frame_name: %s, parent_frame: %s, data: %f\n", frame_id.c_str(),
-               parent_frame_id.c_str(), _msg->pose.position.x);
+        geometry_msgs::msg::TransformStamped transform;
+        transform.child_frame_id          = frame_id;
+        transform.header.frame_id         = parent_frame_id;
+        transform.header.stamp            = _msg->header.stamp;
+        transform.transform.rotation      = _msg->pose.orientation;
+        transform.transform.translation.x = _msg->pose.position.x;
+        transform.transform.translation.y = _msg->pose.position.y;
+        transform.transform.translation.z = _msg->pose.position.z;
+        As2ExternalObjectToTf::tfBroadcaster->sendTransform(transform);
       };
 };
 
@@ -88,10 +98,10 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
             (!json_geofence["parent_frame"].is_null()) ? json_geofence["parent_frame"] : "earth";
         gps_subs_.push_back(this->create_subscription<sensor_msgs::msg::NavSatFix>(
             json_geofence["gps_topic"], as2_names::topics::self_localization::qos,
-            std::bind(&As2ExternalObjectToTf::gpsCallback, this, std::placeholders::_1)));
+            gps_callback_factory(json_geofence["frame"], parent_frame)));
         azimuth_subs_.push_back(this->create_subscription<std_msgs::msg::Float32>(
             json_geofence["azimuth_topic"], as2_names::topics::self_localization::qos,
-            std::bind(&As2ExternalObjectToTf::azimuthCallback, this, std::placeholders::_1)));
+            azimuth_callback_factory(json_geofence["frame"], parent_frame)));
 
       } else {
         RCLCPP_WARN(this->get_logger(), "Invalid type for object '%s', types are: pose or gps",
@@ -107,6 +117,7 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
 }
 
 void As2ExternalObjectToTf::setupNode() {
+  tfBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
   loadObjects(config_path_);
 
   if (gps_subs_.size() > 0) {
@@ -158,12 +169,3 @@ CallbackReturn As2ExternalObjectToTf::on_shutdown(const rclcpp_lifecycle::State&
 
   return CallbackReturn::SUCCESS;
 };
-
-void As2ExternalObjectToTf::poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr _msg) {
-  // geometry_msgs::msg::TransformStamped transform;
-  printf("data: %f\n", _msg->pose.position.x);
-}
-
-void As2ExternalObjectToTf::gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr _msg) {}
-
-void As2ExternalObjectToTf::azimuthCallback(const std_msgs::msg::Float32::SharedPtr _msg) {}

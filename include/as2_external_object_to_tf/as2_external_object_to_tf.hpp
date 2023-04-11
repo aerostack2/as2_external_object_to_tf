@@ -67,6 +67,8 @@ public:
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State &) override;
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State &) override;
 
+  static std::unique_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster;
+
 private:
   std::string config_path_;
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> pose_subs_;
@@ -76,11 +78,6 @@ private:
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr>
       objects_subscriptions_;
   void loadObjects(const std::string path);
-
-  void gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr _msg);
-  void azimuthCallback(const std_msgs::msg::Float32::SharedPtr _msg);
-  void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr _msg);
-
   rclcpp::Client<as2_msgs::srv::GetOrigin>::SharedPtr get_origin_srv_;
 };
 #endif  // AS2_EXTERNAL_OBJECT_TO_TF_HPP_

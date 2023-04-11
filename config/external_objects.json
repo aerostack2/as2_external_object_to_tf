@@ -3,7 +3,7 @@
         {
             "type": "pose",
             "parent_frame": "earth",
-            "frame": "windmill_0",
+            "child_frame": "windmill_0",
             "pose_topic": "/windmill_0/debug/pose"
         }
     ]
