@@ -51,6 +51,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/string.hpp"
 
 class As2ExternalObjectToTf : public as2::Node {
 public:
@@ -62,35 +63,24 @@ public:
   void cleanupNode();
   void run();
 
-  CallbackReturn on_configure(const rclcpp_lifecycle::State&) override;
-  CallbackReturn on_deactivate(const rclcpp_lifecycle::State&) override;
-  CallbackReturn on_shutdown(const rclcpp_lifecycle::State&) override;
-
-  struct pose_object {         // Structure declaration
-    std::string parent_frame;  // object parent frame
-    std::string frame;         // object frame name
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub;
-  };
-
-  struct gps_object {
-    std::string parent_frame;  // object parent frame
-    std::string frame;         // object frame name
-    rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub;
-    rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr azimuth_sub;
-  };
+  CallbackReturn on_configure(const rclcpp_lifecycle::State &) override;
+  CallbackReturn on_deactivate(const rclcpp_lifecycle::State &) override;
+  CallbackReturn on_shutdown(const rclcpp_lifecycle::State &) override;
 
 private:
   std::string config_path_;
-  std::vector<pose_object> tf_pose_objects_;
-  std::vector<gps_object> tf_gps_objects_;
+  std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> pose_subs_;
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr> gps_subs_;
+  std::vector<rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr> azimuth_subs_;
   geographic_msgs::msg::GeoPoint::UniquePtr origin_;
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr>
       objects_subscriptions_;
   void loadObjects(const std::string path);
-  void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr _msg);
+
   void gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr _msg);
   void azimuthCallback(const std_msgs::msg::Float32::SharedPtr _msg);
+  void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr _msg);
+
   rclcpp::Client<as2_msgs::srv::GetOrigin>::SharedPtr get_origin_srv_;
 };
-
 #endif  // AS2_EXTERNAL_OBJECT_TO_TF_HPP_
