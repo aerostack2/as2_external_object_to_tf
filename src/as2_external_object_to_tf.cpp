@@ -35,7 +35,6 @@
 #include "json.hpp"
 
 As2ExternalObjectToTf::As2ExternalObjectToTf() : as2::Node("external_object_to_tf") {
-  this->declare_parameter("namespace", "drone_0");
   this->declare_parameter("config_file", "config/external_objects.json");
   this->get_parameter("config_file", config_path_);
 }
@@ -94,6 +93,10 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
             pose_callback_factory(json_geofence["frame"], parent_frame)));
 
       } else if (json_geofence["type"] == "gps") {
+        if (!origin_set_) {
+          setupGPS();
+          origin_set_ = true;
+        }
         std::string parent_frame =
             (!json_geofence["parent_frame"].is_null()) ? json_geofence["parent_frame"] : "earth";
         gps_subs_.push_back(this->create_subscription<sensor_msgs::msg::NavSatFix>(
@@ -119,31 +122,33 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
 void As2ExternalObjectToTf::setupNode() {
   tfBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
   loadObjects(config_path_);
+}
 
-  if (gps_subs_.size() > 0) {
-    get_origin_srv_ =
-        this->create_client<as2_msgs::srv::GetOrigin>(as2_names::services::gps::get_origin);
-    auto request = std::make_shared<as2_msgs::srv::GetOrigin::Request>();
+void As2ExternalObjectToTf::setupGPS() {
+  get_origin_srv_ = this->create_client<as2_msgs::srv::GetOrigin>(
+      as2_names::services::gps::get_origin);  // Should be same origin for every drone ?
+  auto request = std::make_shared<as2_msgs::srv::GetOrigin::Request>();
 
-    while (!get_origin_srv_->wait_for_service(std::chrono::seconds(1))) {
-      if (!rclcpp::ok()) {
-        RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
-      }
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+  while (!get_origin_srv_->wait_for_service(std::chrono::seconds(1))) {
+    if (!rclcpp::ok()) {
+      RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
     }
-
-    auto result = get_origin_srv_->async_send_request(request);
-    // Wait for the result.
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) ==
-        rclcpp::FutureReturnCode::SUCCESS) {
-      *origin_ = result.get()->origin;
-      RCLCPP_INFO(this->get_logger(), "Origin in: lat: %f, lon %f, alt: %f",
-                  result.get()->origin.latitude, result.get()->origin.longitude,
-                  result.get()->origin.altitude);
-    } else {
-      RCLCPP_ERROR(this->get_logger(), "Failed to call service get origin");
-    }
+    RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
   }
+
+  auto result = get_origin_srv_->async_send_request(request);
+  // Wait for the result.
+  if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) ==
+      rclcpp::FutureReturnCode::SUCCESS) {
+    *origin_ = result.get()->origin;
+    RCLCPP_INFO(this->get_logger(), "Origin in: lat: %f, lon %f, alt: %f",
+                result.get()->origin.latitude, result.get()->origin.longitude,
+                result.get()->origin.altitude);
+  } else {
+    RCLCPP_ERROR(this->get_logger(), "Failed to call service get origin");
+  }
+  gps_handler = std::make_unique<as2::gps::GpsHandler>(origin_->latitude, origin_->longitude,
+                                                       origin_->longitude);
 }
 
 void As2ExternalObjectToTf::run() { return; }

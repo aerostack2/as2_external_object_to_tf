@@ -47,6 +47,7 @@
 #include "as2_core/names/services.hpp"
 #include "as2_core/names/topics.hpp"
 #include "as2_core/node.hpp"
+#include "as2_core/utils/gps_utils.hpp"
 #include "as2_msgs/srv/get_origin.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
@@ -75,9 +76,12 @@ private:
   std::vector<rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr> gps_subs_;
   std::vector<rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr> azimuth_subs_;
   geographic_msgs::msg::GeoPoint::UniquePtr origin_;
+  bool origin_set_ = false;
+  std::unique_ptr<as2::gps::GpsHandler> gps_handler;
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr>
       objects_subscriptions_;
   void loadObjects(const std::string path);
+  void setupGPS();
   rclcpp::Client<as2_msgs::srv::GetOrigin>::SharedPtr get_origin_srv_;
 };
 #endif  // AS2_EXTERNAL_OBJECT_TO_TF_HPP_
