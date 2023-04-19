@@ -39,8 +39,6 @@ As2ExternalObjectToTf::As2ExternalObjectToTf() : as2::Node("external_object_to_t
   this->get_parameter("config_file", config_path_);
 }
 
-std::unique_ptr<tf2_ros::TransformBroadcaster> As2ExternalObjectToTf::tfBroadcaster = NULL;
-
 auto pose_callback_factory = [](const std::string& frame_id, const std::string& parent_frame_id) {
   return
       [frame_id, parent_frame_id](const geometry_msgs::msg::PoseStamped::SharedPtr _msg) -> void {
@@ -58,18 +56,53 @@ auto pose_callback_factory = [](const std::string& frame_id, const std::string& 
 
 auto gps_callback_factory = [](const std::string& frame_id, const std::string& parent_frame_id) {
   return [frame_id, parent_frame_id](const sensor_msgs::msg::NavSatFix::SharedPtr _msg) -> void {
-    printf("frame_name: %s, parent_frame: %s, data: %f\n", frame_id.c_str(),
-           parent_frame_id.c_str(), _msg->altitude);
+    As2ExternalObjectToTf::gps_poses[frame_id].gps_pose = _msg;
+    if (As2ExternalObjectToTf::gps_poses[frame_id].azimuth != NULL) {
+      As2ExternalObjectToTf::tfBroadcaster->sendTransform(As2ExternalObjectToTf::gpsToTransform(
+          As2ExternalObjectToTf::gps_poses[frame_id].gps_pose,
+          As2ExternalObjectToTf::gps_poses[frame_id].azimuth, frame_id, parent_frame_id));
+    }
   };
 };
 
 auto azimuth_callback_factory = [](const std::string& frame_id,
                                    const std::string& parent_frame_id) {
   return [frame_id, parent_frame_id](const std_msgs::msg::Float32::SharedPtr _msg) -> void {
-    printf("frame_name: %s, parent_frame: %s, data: %f\n", frame_id.c_str(),
-           parent_frame_id.c_str(), _msg->data);
+    As2ExternalObjectToTf::gps_poses[frame_id].azimuth = _msg;
   };
 };
+
+geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthToQuaternion(
+    std_msgs::msg::Float32::SharedPtr azimuth) {
+  float azimuthRad = azimuth->data * M_PI / 180.0;
+  azimuthRad += M_PI / 2;
+  if (azimuthRad > M_PI) {
+    azimuthRad -= (2 * M_PI);
+  }
+  geometry_msgs::msg::Quaternion q;
+  double halfYaw = azimuthRad * 0.5;
+  q.x            = 0.0;
+  q.y            = 0.0;
+  q.z            = sin(halfYaw);
+  q.w            = cos(halfYaw);
+  return q;
+}
+
+geometry_msgs::msg::TransformStamped As2ExternalObjectToTf::gpsToTransform(
+    const sensor_msgs::msg::NavSatFix::SharedPtr gps_pose,
+    const std_msgs::msg::Float32::SharedPtr azimuth,
+    const std::string frame_id,
+    const std::string parent_frame_id) {
+  geometry_msgs::msg::TransformStamped transform;
+  transform.header.stamp              = gps_pose->header.stamp;
+  transform.header.frame_id           = parent_frame_id;
+  transform.child_frame_id            = frame_id;
+  sensor_msgs::msg::NavSatFix* rawPtr = gps_pose.get();
+  gps_handler->LatLon2Local(*rawPtr, transform.transform.translation.x,
+                            transform.transform.translation.y, transform.transform.translation.z);
+  transform.transform.rotation = azimuthToQuaternion(azimuth);
+  return transform;
+}
 
 void As2ExternalObjectToTf::loadObjects(const std::string path) {
   std::ifstream fJson(path);
@@ -97,6 +130,7 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
           setupGPS();
           origin_set_ = true;
         }
+        As2ExternalObjectToTf::gps_poses[json_geofence["frame"]] = gps_object();
         std::string parent_frame =
             (!json_geofence["parent_frame"].is_null()) ? json_geofence["parent_frame"] : "earth";
         gps_subs_.push_back(this->create_subscription<sensor_msgs::msg::NavSatFix>(
@@ -127,7 +161,6 @@ void As2ExternalObjectToTf::setupNode() {
 void As2ExternalObjectToTf::setupGPS() {
   get_origin_srv_ = this->create_client<as2_msgs::srv::GetOrigin>(
       as2_names::services::gps::get_origin);  // Should be same origin for every drone ?
-  auto request = std::make_shared<as2_msgs::srv::GetOrigin::Request>();
 
   while (!get_origin_srv_->wait_for_service(std::chrono::seconds(1))) {
     if (!rclcpp::ok()) {
@@ -136,20 +169,31 @@ void As2ExternalObjectToTf::setupGPS() {
     RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
   }
 
+  auto request = std::make_shared<as2_msgs::srv::GetOrigin::Request>();
+
+  request->structure_needs_at_least_one_member = 0;
+
   auto result = get_origin_srv_->async_send_request(request);
   // Wait for the result.
-  if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) ==
+  if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result,
+                                         std::chrono::seconds(1)) ==
       rclcpp::FutureReturnCode::SUCCESS) {
-    *origin_ = result.get()->origin;
-    RCLCPP_INFO(this->get_logger(), "Origin in: lat: %f, lon %f, alt: %f",
-                result.get()->origin.latitude, result.get()->origin.longitude,
-                result.get()->origin.altitude);
+    // ;
+
   } else {
     RCLCPP_ERROR(this->get_logger(), "Failed to call service get origin");
+    return;
   }
+  origin_ = std::make_unique<geographic_msgs::msg::GeoPoint>(result.get()->origin);
+  RCLCPP_INFO(this->get_logger(), "Origin in: lat: %f, lon %f, alt: %f", origin_->latitude,
+              origin_->longitude, origin_->altitude);
   gps_handler = std::make_unique<as2::gps::GpsHandler>(origin_->latitude, origin_->longitude,
-                                                       origin_->longitude);
+                                                       origin_->altitude);
 }
+
+std::unique_ptr<tf2_ros::TransformBroadcaster> As2ExternalObjectToTf::tfBroadcaster = NULL;
+std::unique_ptr<as2::gps::GpsHandler> As2ExternalObjectToTf::gps_handler            = NULL;
+std::map<std::string, gps_object> As2ExternalObjectToTf::gps_poses;
 
 void As2ExternalObjectToTf::run() { return; }
 

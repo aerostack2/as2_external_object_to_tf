@@ -11,6 +11,7 @@ def generate_launch_description():
             package='as2_external_object_to_tf',
             executable='as2_external_object_to_tf_node',
             name='as2_external_object_to_tf',
+            prefix=['xterm -e gdb -ex run --args'],
             namespace=LaunchConfiguration('namespace'),
             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')},
                         {'config_file': LaunchConfiguration('config_file')}],

@@ -42,6 +42,7 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <geographic_msgs/msg/geo_point.hpp>
+#include <geometry_msgs/msg/quaternion.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/services.hpp"
@@ -53,6 +54,11 @@
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/string.hpp"
+
+struct gps_object {
+  sensor_msgs::msg::NavSatFix::SharedPtr gps_pose;
+  std_msgs::msg::Float32::SharedPtr azimuth;
+};
 
 class As2ExternalObjectToTf : public as2::Node {
 public:
@@ -69,6 +75,15 @@ public:
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State &) override;
 
   static std::unique_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster;
+  static std::unique_ptr<as2::gps::GpsHandler> gps_handler;
+  static std::map<std::string, gps_object> gps_poses;
+  static geometry_msgs::msg::TransformStamped gpsToTransform(
+      const sensor_msgs::msg::NavSatFix::SharedPtr gps_pose,
+      const std_msgs::msg::Float32::SharedPtr azimuth,
+      const std::string frame_id,
+      const std::string parent_frame_id);
+  static geometry_msgs::msg::Quaternion azimuthToQuaternion(
+      const std_msgs::msg::Float32::SharedPtr azimuth);
 
 private:
   std::string config_path_;
@@ -77,7 +92,6 @@ private:
   std::vector<rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr> azimuth_subs_;
   geographic_msgs::msg::GeoPoint::UniquePtr origin_;
   bool origin_set_ = false;
-  std::unique_ptr<as2::gps::GpsHandler> gps_handler;
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr>
       objects_subscriptions_;
   void loadObjects(const std::string path);
