@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.5)
 set(PROJECT_NAME as2_external_object_to_tf)
 project(${PROJECT_NAME})
 
-add_compile_options(-g)
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
