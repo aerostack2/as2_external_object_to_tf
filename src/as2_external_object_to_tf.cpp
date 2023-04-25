@@ -83,8 +83,8 @@ geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthToQuaternion(
   double halfYaw = azimuthRad * 0.5;
   q.x            = 0.0;
   q.y            = 0.0;
-  q.z            = sin(halfYaw);
-  q.w            = cos(halfYaw);
+  q.z            = cos(halfYaw);
+  q.w            = sin(halfYaw);
   return q;
 }
 
