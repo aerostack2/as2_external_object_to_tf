@@ -21,6 +21,7 @@ set(PROJECT_DEPENDENCIES
   std_srvs
   std_msgs
   geometry_msgs
+  yaml-cpp
   sensor_msgs
   tf2
   tf2_ros
@@ -35,16 +36,16 @@ include_directories(
   include/${PROJECT_NAME}
   #uncomment if using Eigen3
   #{EIGEN3_INCLUDE_DIRS} 
-  include/json.hpp
 )
 
 set(SOURCE_CPP_FILES 
   src/as2_external_object_to_tf.cpp
 )
 
+
 add_executable(${PROJECT_NAME}_node src/as2_external_object_to_tf_node.cpp ${SOURCE_CPP_FILES})
 ament_target_dependencies(${PROJECT_NAME}_node ${PROJECT_DEPENDENCIES})
-
+target_link_libraries(${PROJECT_NAME}_node yaml-cpp)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_cppcheck REQUIRED)

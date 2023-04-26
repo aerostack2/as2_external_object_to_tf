@@ -32,10 +32,10 @@
  ********************************************************************************/
 
 #include "as2_external_object_to_tf.hpp"
-#include "json.hpp"
+#include "yaml-cpp/yaml.h"
 
 As2ExternalObjectToTf::As2ExternalObjectToTf() : as2::Node("external_object_to_tf") {
-  this->declare_parameter("config_file", "config/external_objects.json");
+  this->declare_parameter("config_file", "config/external_objects.yaml");
   this->get_parameter("config_file", config_path_);
 }
 
@@ -105,51 +105,46 @@ geometry_msgs::msg::TransformStamped As2ExternalObjectToTf::gpsToTransform(
 }
 
 void As2ExternalObjectToTf::loadObjects(const std::string path) {
-  std::ifstream fJson(path);
-  std::stringstream buffer;
-  buffer << fJson.rdbuf();
-  auto json = nlohmann::json::parse(buffer.str());
-  for (auto json_geofence : json["objects"]) {
-    // if (!checkValidity(std::size(json_geofence["polygon"]), json_geofence["id"],
-    //                    json_geofence["type"])) {
-    //   return;
-    // } else {
+  try {
+    YAML::Node config = YAML::LoadFile(config_path_);
+    auto objects      = config["objects"];
+    for (YAML::const_iterator object = objects.begin(); object != objects.end(); ++object) {
+      std::string type = (*object)["frame"].as<std::string>();
 
-    std::string type = json_geofence["frame"];
-    try {
-      if (json_geofence["type"] == "pose") {
-        std::string parent_frame =
-            (!json_geofence["parent_frame"].is_null()) ? json_geofence["parent_frame"] : "earth";
+      if ((*object)["type"].as<std::string>() == "pose") {
+        std::string parent_frame = ((*object)["parent_frame"].IsDefined())
+                                       ? (*object)["parent_frame"].as<std::string>()
+                                       : "earth";
 
         pose_subs_.push_back(this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            json_geofence["pose_topic"], as2_names::topics::self_localization::qos,
-            pose_callback_factory(json_geofence["frame"], parent_frame)));
+            (*object)["pose_topic"].as<std::string>(), as2_names::topics::self_localization::qos,
+            pose_callback_factory((*object)["frame"].as<std::string>(), parent_frame)));
 
-      } else if (json_geofence["type"] == "gps") {
+      } else if ((*object)["type"].as<std::string>() == "gps") {
         if (!origin_set_) {
           setupGPS();
           origin_set_ = true;
         }
-        As2ExternalObjectToTf::gps_poses[json_geofence["frame"]] = gps_object();
-        std::string parent_frame =
-            (!json_geofence["parent_frame"].is_null()) ? json_geofence["parent_frame"] : "earth";
+        As2ExternalObjectToTf::gps_poses[(*object)["frame"].as<std::string>()] = gps_object();
+        std::string parent_frame = ((*object)["parent_frame"].IsDefined())
+                                       ? (*object)["parent_frame"].as<std::string>()
+                                       : "earth";
         gps_subs_.push_back(this->create_subscription<sensor_msgs::msg::NavSatFix>(
-            json_geofence["gps_topic"], as2_names::topics::self_localization::qos,
-            gps_callback_factory(json_geofence["frame"], parent_frame)));
+            (*object)["gps_topic"].as<std::string>(), as2_names::topics::self_localization::qos,
+            gps_callback_factory((*object)["frame"].as<std::string>(), parent_frame)));
         azimuth_subs_.push_back(this->create_subscription<std_msgs::msg::Float32>(
-            json_geofence["azimuth_topic"], as2_names::topics::self_localization::qos,
-            azimuth_callback_factory(json_geofence["frame"], parent_frame)));
+            (*object)["azimuth_topic"].as<std::string>(), as2_names::topics::self_localization::qos,
+            azimuth_callback_factory((*object)["frame"].as<std::string>(), parent_frame)));
 
       } else {
         RCLCPP_WARN(this->get_logger(), "Invalid type for object '%s', types are: pose or gps",
                     type.c_str());
       }
-      RCLCPP_INFO(this->get_logger(), "Object '%s' Succesfully loaded from JSON file",
+      RCLCPP_INFO(this->get_logger(), "Object '%s' Succesfully loaded from config file",
                   type.c_str());
-
-    } catch (nlohmann::json::exception& e) {
-      RCLCPP_ERROR(this->get_logger(), "Json error: %s", e.what());
     }
+  } catch (YAML::Exception& e) {
+    RCLCPP_ERROR(this->get_logger(), "YAML error: %s", e.what());
   }
 }
 
