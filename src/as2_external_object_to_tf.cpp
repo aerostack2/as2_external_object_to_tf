@@ -39,38 +39,38 @@ As2ExternalObjectToTf::As2ExternalObjectToTf() : as2::Node("external_object_to_t
   this->get_parameter("config_file", config_path_);
 }
 
-auto pose_callback_factory = [](const std::string& frame_id, const std::string& parent_frame_id) {
-  return
-      [frame_id, parent_frame_id](const geometry_msgs::msg::PoseStamped::SharedPtr _msg) -> void {
-        geometry_msgs::msg::TransformStamped transform;
-        transform.child_frame_id          = frame_id;
-        transform.header.frame_id         = parent_frame_id;
-        transform.header.stamp            = _msg->header.stamp;
-        transform.transform.rotation      = _msg->pose.orientation;
-        transform.transform.translation.x = _msg->pose.position.x;
-        transform.transform.translation.y = _msg->pose.position.y;
-        transform.transform.translation.z = _msg->pose.position.z;
-        As2ExternalObjectToTf::tfBroadcaster->sendTransform(transform);
-      };
-};
+void As2ExternalObjectToTf::poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr _msg,
+                                         std::string frame_id,
+                                         std::string parent_frame_id) {
+  geometry_msgs::msg::TransformStamped transform;
 
-auto gps_callback_factory = [](const std::string& frame_id, const std::string& parent_frame_id) {
-  return [frame_id, parent_frame_id](const sensor_msgs::msg::NavSatFix::SharedPtr _msg) -> void {
-    As2ExternalObjectToTf::gps_poses[frame_id].gps_pose = _msg;
-    if (As2ExternalObjectToTf::gps_poses[frame_id].azimuth != NULL) {
-      As2ExternalObjectToTf::tfBroadcaster->sendTransform(As2ExternalObjectToTf::gpsToTransform(
-          As2ExternalObjectToTf::gps_poses[frame_id].gps_pose,
-          As2ExternalObjectToTf::gps_poses[frame_id].azimuth, frame_id, parent_frame_id));
-    }
-  };
-};
+  transform.child_frame_id          = frame_id;
+  transform.header.frame_id         = parent_frame_id;
+  transform.header.stamp            = _msg->header.stamp;
+  transform.transform.rotation      = _msg->pose.orientation;
+  transform.transform.translation.x = _msg->pose.position.x;
+  transform.transform.translation.y = _msg->pose.position.y;
+  transform.transform.translation.z = _msg->pose.position.z;
 
-auto azimuth_callback_factory = [](const std::string& frame_id,
-                                   const std::string& parent_frame_id) {
-  return [frame_id, parent_frame_id](const std_msgs::msg::Float32::SharedPtr _msg) -> void {
-    As2ExternalObjectToTf::gps_poses[frame_id].azimuth = _msg;
-  };
-};
+  tfBroadcaster->sendTransform(transform);
+}
+
+void As2ExternalObjectToTf::gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr _msg,
+                                        std::string frame_id,
+                                        std::string parent_frame_id) {
+  gps_poses[frame_id].gps_pose = _msg;
+
+  if (gps_poses[frame_id].azimuth != NULL) {
+    tfBroadcaster->sendTransform(gpsToTransform(
+        gps_poses[frame_id].gps_pose, gps_poses[frame_id].azimuth, frame_id, parent_frame_id));
+  }
+}
+
+void As2ExternalObjectToTf::azimuthCallback(const std_msgs::msg::Float32::SharedPtr _msg,
+                                            std::string frame_id,
+                                            std::string parent_frame_id) {
+  gps_poses[frame_id].azimuth = _msg;
+}
 
 geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthToQuaternion(
     std_msgs::msg::Float32::SharedPtr azimuth) {
@@ -116,25 +116,40 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
                                        ? (*object)["parent_frame"].as<std::string>()
                                        : "earth";
 
+        std::function<void(std::shared_ptr<geometry_msgs::msg::PoseStamped>)> poseFnc =
+            std::bind(&As2ExternalObjectToTf::poseCallback, this, std::placeholders::_1,
+                      (*object)["frame"].as<std::string>(), parent_frame);
+
         pose_subs_.push_back(this->create_subscription<geometry_msgs::msg::PoseStamped>(
             (*object)["pose_topic"].as<std::string>(), as2_names::topics::self_localization::qos,
-            pose_callback_factory((*object)["frame"].as<std::string>(), parent_frame)));
+            poseFnc));
 
       } else if ((*object)["type"].as<std::string>() == "gps") {
         if (!origin_set_) {
           setupGPS();
           origin_set_ = true;
         }
+
         As2ExternalObjectToTf::gps_poses[(*object)["frame"].as<std::string>()] = gps_object();
         std::string parent_frame = ((*object)["parent_frame"].IsDefined())
                                        ? (*object)["parent_frame"].as<std::string>()
                                        : "earth";
+
+        std::function<void(std::shared_ptr<sensor_msgs::msg::NavSatFix>)> gpsFnc =
+            std::bind(&As2ExternalObjectToTf::gpsCallback, this, std::placeholders::_1,
+                      (*object)["frame"].as<std::string>(), parent_frame);
+
+        std::function<void(std::shared_ptr<std_msgs::msg::Float32>)> azimuthFnc =
+            std::bind(&As2ExternalObjectToTf::azimuthCallback, this, std::placeholders::_1,
+                      (*object)["frame"].as<std::string>(), parent_frame);
+
         gps_subs_.push_back(this->create_subscription<sensor_msgs::msg::NavSatFix>(
             (*object)["gps_topic"].as<std::string>(), as2_names::topics::self_localization::qos,
-            gps_callback_factory((*object)["frame"].as<std::string>(), parent_frame)));
+            gpsFnc));
+
         azimuth_subs_.push_back(this->create_subscription<std_msgs::msg::Float32>(
             (*object)["azimuth_topic"].as<std::string>(), as2_names::topics::self_localization::qos,
-            azimuth_callback_factory((*object)["frame"].as<std::string>(), parent_frame)));
+            azimuthFnc));
 
       } else {
         RCLCPP_WARN(this->get_logger(), "Invalid type for object '%s', types are: pose or gps",
@@ -185,10 +200,6 @@ void As2ExternalObjectToTf::setupGPS() {
   gps_handler = std::make_unique<as2::gps::GpsHandler>(origin_->latitude, origin_->longitude,
                                                        origin_->altitude);
 }
-
-std::unique_ptr<tf2_ros::TransformBroadcaster> As2ExternalObjectToTf::tfBroadcaster = NULL;
-std::unique_ptr<as2::gps::GpsHandler> As2ExternalObjectToTf::gps_handler            = NULL;
-std::map<std::string, gps_object> As2ExternalObjectToTf::gps_poses;
 
 void As2ExternalObjectToTf::run() { return; }
 

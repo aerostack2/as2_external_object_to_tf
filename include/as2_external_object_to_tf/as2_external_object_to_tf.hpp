@@ -74,28 +74,45 @@ public:
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State &) override;
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State &) override;
 
-  static std::unique_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster;
-  static std::unique_ptr<as2::gps::GpsHandler> gps_handler;
-  static std::map<std::string, gps_object> gps_poses;
-  static geometry_msgs::msg::TransformStamped gpsToTransform(
-      const sensor_msgs::msg::NavSatFix::SharedPtr gps_pose,
-      const std_msgs::msg::Float32::SharedPtr azimuth,
-      const std::string frame_id,
-      const std::string parent_frame_id);
-  static geometry_msgs::msg::Quaternion azimuthToQuaternion(
-      const std_msgs::msg::Float32::SharedPtr azimuth);
-
 private:
+  bool origin_set_ = false;
+
   std::string config_path_;
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> pose_subs_;
   std::vector<rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr> gps_subs_;
   std::vector<rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr> azimuth_subs_;
   geographic_msgs::msg::GeoPoint::UniquePtr origin_;
-  bool origin_set_ = false;
+
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr>
       objects_subscriptions_;
-  void loadObjects(const std::string path);
-  void setupGPS();
+
   rclcpp::Client<as2_msgs::srv::GetOrigin>::SharedPtr get_origin_srv_;
+
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster;
+  std::unique_ptr<as2::gps::GpsHandler> gps_handler;
+  std::map<std::string, gps_object> gps_poses;
+
+  void loadObjects(const std::string path);
+
+  void setupGPS();
+
+  geometry_msgs::msg::TransformStamped gpsToTransform(
+      const sensor_msgs::msg::NavSatFix::SharedPtr gps_pose,
+      const std_msgs::msg::Float32::SharedPtr azimuth,
+      const std::string frame_id,
+      const std::string parent_frame_id);
+
+  geometry_msgs::msg::Quaternion azimuthToQuaternion(
+      const std_msgs::msg::Float32::SharedPtr azimuth);
+
+  void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg,
+                    std::string frame_id,
+                    std::string parent_frame_id);
+  void gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg,
+                   std::string frame_id,
+                   std::string parent_frame_id);
+  void azimuthCallback(const std_msgs::msg::Float32::SharedPtr msg,
+                       std::string frame_id,
+                       std::string parent_frame_id);
 };
 #endif  // AS2_EXTERNAL_OBJECT_TO_TF_HPP_
