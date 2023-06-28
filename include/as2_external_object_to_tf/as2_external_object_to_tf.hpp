@@ -75,7 +75,8 @@ public:
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State &) override;
 
 private:
-  bool origin_set_ = false;
+  bool origin_set_  = false;
+  bool use_sim_time = false;
 
   std::string config_path_;
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> pose_subs_;

@@ -37,6 +37,7 @@
 As2ExternalObjectToTf::As2ExternalObjectToTf() : as2::Node("external_object_to_tf") {
   this->declare_parameter("config_file", "config/external_objects.yaml");
   this->get_parameter("config_file", config_path_);
+  this->get_parameter("use_sim_time", use_sim_time);
 }
 
 void As2ExternalObjectToTf::poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr _msg,
@@ -183,22 +184,31 @@ void As2ExternalObjectToTf::setupGPS() {
 
   request->structure_needs_at_least_one_member = 0;
 
-  auto result = get_origin_srv_->async_send_request(request);
+  bool success = false;  // TO-DO: Improve this
   // Wait for the result.
-  if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result,
-                                         std::chrono::seconds(1)) ==
-      rclcpp::FutureReturnCode::SUCCESS) {
-    // ;
+  while (!success) {
+    auto result = get_origin_srv_->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result,
+                                           std::chrono::seconds(1)) ==
+        rclcpp::FutureReturnCode::SUCCESS) {
+      // ;
 
-  } else {
-    RCLCPP_ERROR(this->get_logger(), "Failed to call service get origin");
-    return;
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "Failed to call service get origin");
+      return;
+    }
+    auto result_obj = *result.get();
+    success         = result_obj.success;
+    if (success) {
+      origin_ = std::make_unique<geographic_msgs::msg::GeoPoint>(result_obj.origin);
+      RCLCPP_INFO(this->get_logger(), "Origin in: lat: %f, lon %f, alt: %f", origin_->latitude,
+                  origin_->longitude, origin_->altitude);
+      gps_handler = std::make_unique<as2::gps::GpsHandler>(origin_->latitude, origin_->longitude,
+                                                           origin_->altitude);
+    } else {
+      RCLCPP_WARN(this->get_logger(), "Get origin request not successful, trying again...");
+    }
   }
-  origin_ = std::make_unique<geographic_msgs::msg::GeoPoint>(result.get()->origin);
-  RCLCPP_INFO(this->get_logger(), "Origin in: lat: %f, lon %f, alt: %f", origin_->latitude,
-              origin_->longitude, origin_->altitude);
-  gps_handler = std::make_unique<as2::gps::GpsHandler>(origin_->latitude, origin_->longitude,
-                                                       origin_->altitude);
 }
 
 void As2ExternalObjectToTf::run() { return; }
