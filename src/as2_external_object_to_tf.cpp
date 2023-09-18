@@ -32,6 +32,7 @@
  ********************************************************************************/
 
 #include "as2_external_object_to_tf.hpp"
+#include "as2_core/utils/frame_utils.hpp"
 #include "yaml-cpp/yaml.h"
 
 As2ExternalObjectToTf::As2ExternalObjectToTf() : as2::Node("external_object_to_tf") {
@@ -62,8 +63,9 @@ void As2ExternalObjectToTf::gpsCallback(const sensor_msgs::msg::NavSatFix::Share
   gps_poses[frame_id].gps_pose = _msg;
 
   if (gps_poses[frame_id].azimuth != NULL) {
-    tfBroadcaster->sendTransform(gpsToTransform(
-        gps_poses[frame_id].gps_pose, gps_poses[frame_id].azimuth, frame_id, parent_frame_id));
+    tfBroadcaster->sendTransform(gpsToTransform(gps_poses[frame_id].gps_pose,
+                                                gps_poses[frame_id].azimuth->data, 0.0, frame_id,
+                                                parent_frame_id));
   }
 }
 
@@ -71,6 +73,31 @@ void As2ExternalObjectToTf::azimuthCallback(const std_msgs::msg::Float32::Shared
                                             std::string frame_id,
                                             std::string parent_frame_id) {
   gps_poses[frame_id].azimuth = _msg;
+}
+
+void As2ExternalObjectToTf::addStaticTransform(
+    const std::shared_ptr<as2_external_object_to_tf::srv::AddStaticTransform::Request> request,
+    const std::shared_ptr<as2_external_object_to_tf::srv::AddStaticTransform::Response> response) {
+  geometry_msgs::msg::TransformStamped static_transform;
+  static_transform.child_frame_id  = request->child_frame_id;
+  static_transform.header.frame_id = request->frame_id;
+  static_transform.header.stamp    = this->get_clock()->now();
+  static_transform.transform       = request->transform;
+  staticTfBroadcaster->sendTransform(static_transform);
+  response->success = true;
+}
+
+void As2ExternalObjectToTf::addStaticTransformGps(
+    const std::shared_ptr<as2_external_object_to_tf::srv::AddStaticTransformGps::Request> request,
+    const std::shared_ptr<as2_external_object_to_tf::srv::AddStaticTransformGps::Response>
+        response) {
+  geometry_msgs::msg::TransformStamped static_transform;
+  static_transform = gpsToTransform(
+      std::make_shared<sensor_msgs::msg::NavSatFix>(request->gps_position), request->azimuth,
+      request->elevation, request->child_frame_id, request->frame_id);
+  static_transform.header.stamp = this->get_clock()->now();
+  staticTfBroadcaster->sendTransform(static_transform);
+  response->success = true;
 }
 
 geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthToQuaternion(
@@ -89,9 +116,29 @@ geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthToQuaternion(
   return q;
 }
 
+geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthPitchToQuaternion(
+    float azimuth,
+    float elevation = 0.0) {
+  float azimuthRad = azimuth * M_PI / 180.0;
+  azimuthRad -= M_PI / 2;
+  if (azimuthRad < M_PI) {
+    azimuthRad += (2 * M_PI);
+  }
+  // geometry_msgs::msg::Quaternion q;
+  // double halfYaw = azimuthRad * 0.5;
+  // q.x            = 0.0;
+  // q.y            = 0.0;
+  // q.z            = cos(halfYaw);
+  // q.w            = sin(halfYaw);
+  geometry_msgs::msg::Quaternion q;
+  as2::frame::eulerToQuaternion(0.0, elevation, -azimuthRad, q);
+  return q;
+}
+
 geometry_msgs::msg::TransformStamped As2ExternalObjectToTf::gpsToTransform(
     const sensor_msgs::msg::NavSatFix::SharedPtr gps_pose,
-    const std_msgs::msg::Float32::SharedPtr azimuth,
+    const float azimuth,
+    const float elevation,
     const std::string frame_id,
     const std::string parent_frame_id) {
   geometry_msgs::msg::TransformStamped transform;
@@ -101,7 +148,7 @@ geometry_msgs::msg::TransformStamped As2ExternalObjectToTf::gpsToTransform(
   sensor_msgs::msg::NavSatFix* rawPtr = gps_pose.get();
   gps_handler->LatLon2Local(*rawPtr, transform.transform.translation.x,
                             transform.transform.translation.y, transform.transform.translation.z);
-  transform.transform.rotation = azimuthToQuaternion(azimuth);
+  transform.transform.rotation = azimuthPitchToQuaternion(azimuth, elevation);
   return transform;
 }
 
@@ -162,10 +209,21 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
   } catch (YAML::Exception& e) {
     RCLCPP_ERROR(this->get_logger(), "YAML error: %s", e.what());
   }
+
+  setTrasformSrv = this->create_service<as2_external_object_to_tf::srv::AddStaticTransform>(
+      this->generate_local_name("add_static_transform"),
+      std::bind(&As2ExternalObjectToTf::addStaticTransform, this, std::placeholders::_1,
+                std::placeholders::_2));
+
+  setTrasformGpsSrv = this->create_service<as2_external_object_to_tf::srv::AddStaticTransformGps>(
+      this->generate_local_name("add_static_transform_gps"),
+      std::bind(&As2ExternalObjectToTf::addStaticTransformGps, this, std::placeholders::_1,
+                std::placeholders::_2));
 }
 
 void As2ExternalObjectToTf::setupNode() {
-  tfBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+  tfBroadcaster       = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+  staticTfBroadcaster = std::make_unique<tf2_ros::StaticTransformBroadcaster>(*this);
   loadObjects(config_path_);
 }
 

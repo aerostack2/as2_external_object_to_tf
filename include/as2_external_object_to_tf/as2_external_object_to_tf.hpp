@@ -38,6 +38,7 @@
 #include <iostream>
 
 #include <geometry_msgs/msg/transform_stamped.h>
+#include <tf2/utils.h>
 #include <tf2_msgs/msg/tf_message.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_broadcaster.h>
@@ -49,6 +50,8 @@
 #include "as2_core/names/topics.hpp"
 #include "as2_core/node.hpp"
 #include "as2_core/utils/gps_utils.hpp"
+#include "as2_external_object_to_tf/srv/add_static_transform.hpp"
+#include "as2_external_object_to_tf/srv/add_static_transform_gps.hpp"
 #include "as2_msgs/srv/get_origin.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
@@ -82,6 +85,9 @@ private:
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr> pose_subs_;
   std::vector<rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr> gps_subs_;
   std::vector<rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr> azimuth_subs_;
+  rclcpp::Service<as2_external_object_to_tf::srv::AddStaticTransform>::SharedPtr setTrasformSrv;
+  rclcpp::Service<as2_external_object_to_tf::srv::AddStaticTransformGps>::SharedPtr
+      setTrasformGpsSrv;
   geographic_msgs::msg::GeoPoint::UniquePtr origin_;
 
   std::vector<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr>
@@ -90,6 +96,7 @@ private:
   rclcpp::Client<as2_msgs::srv::GetOrigin>::SharedPtr get_origin_srv_;
 
   std::unique_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster;
+  std::unique_ptr<tf2_ros::StaticTransformBroadcaster> staticTfBroadcaster;
   std::unique_ptr<as2::gps::GpsHandler> gps_handler;
   std::map<std::string, gps_object> gps_poses;
 
@@ -99,12 +106,15 @@ private:
 
   geometry_msgs::msg::TransformStamped gpsToTransform(
       const sensor_msgs::msg::NavSatFix::SharedPtr gps_pose,
-      const std_msgs::msg::Float32::SharedPtr azimuth,
+      const float azimuth,
+      const float pitch,
       const std::string frame_id,
       const std::string parent_frame_id);
 
   geometry_msgs::msg::Quaternion azimuthToQuaternion(
       const std_msgs::msg::Float32::SharedPtr azimuth);
+
+  geometry_msgs::msg::Quaternion azimuthPitchToQuaternion(const float azimuth, const float pitch);
 
   void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg,
                     std::string frame_id,
@@ -115,5 +125,13 @@ private:
   void azimuthCallback(const std_msgs::msg::Float32::SharedPtr msg,
                        std::string frame_id,
                        std::string parent_frame_id);
+
+  void addStaticTransform(
+      const as2_external_object_to_tf::srv::AddStaticTransform::Request::SharedPtr request,
+      const as2_external_object_to_tf::srv::AddStaticTransform::Response::SharedPtr response);
+
+  void addStaticTransformGps(
+      const as2_external_object_to_tf::srv::AddStaticTransformGps::Request::SharedPtr request,
+      const as2_external_object_to_tf::srv::AddStaticTransformGps::Response::SharedPtr response);
 };
 #endif  // AS2_EXTERNAL_OBJECT_TO_TF_HPP_
