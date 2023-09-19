@@ -91,6 +91,10 @@ void As2ExternalObjectToTf::addStaticTransformGps(
     const std::shared_ptr<as2_external_object_to_tf::srv::AddStaticTransformGps::Request> request,
     const std::shared_ptr<as2_external_object_to_tf::srv::AddStaticTransformGps::Response>
         response) {
+  if (!origin_set_) {
+    setupGPS();
+    origin_set_ = true;
+  }
   geometry_msgs::msg::TransformStamped static_transform;
   static_transform = gpsToTransform(
       std::make_shared<sensor_msgs::msg::NavSatFix>(request->gps_position), request->azimuth,
@@ -153,11 +157,11 @@ geometry_msgs::msg::TransformStamped As2ExternalObjectToTf::gpsToTransform(
 }
 
 void As2ExternalObjectToTf::loadObjects(const std::string path) {
-  try {
+  try {  // TODO: Change this to switch case
     YAML::Node config = YAML::LoadFile(config_path_);
     auto objects      = config["objects"];
     for (YAML::const_iterator object = objects.begin(); object != objects.end(); ++object) {
-      std::string type = (*object)["frame"].as<std::string>();
+      std::string type = (*object)["type"].as<std::string>();
 
       if ((*object)["type"].as<std::string>() == "pose") {
         std::string parent_frame = ((*object)["parent_frame"].IsDefined())
@@ -199,9 +203,58 @@ void As2ExternalObjectToTf::loadObjects(const std::string path) {
             (*object)["azimuth_topic"].as<std::string>(), as2_names::topics::self_localization::qos,
             azimuthFnc));
 
-      } else {
-        RCLCPP_WARN(this->get_logger(), "Invalid type for object '%s', types are: pose or gps",
-                    type.c_str());
+      } else if ((*object)["type"].as<std::string>() == "pose_static") {
+        std::string parent_frame = ((*object)["parent_frame"].IsDefined())
+                                       ? (*object)["parent_frame"].as<std::string>()
+                                       : "earth";
+        std::string frame        = (*object)["frame"].as<std::string>();
+        geometry_msgs::msg::TransformStamped static_transform;
+        static_transform.header.frame_id         = parent_frame;
+        static_transform.child_frame_id          = frame;
+        static_transform.transform.translation.x = (*object)["pose"]["position"]["x"].as<double>();
+        static_transform.transform.translation.y = (*object)["pose"]["position"]["y"].as<double>();
+        static_transform.transform.translation.z = (*object)["pose"]["position"]["z"].as<double>();
+        double roll  = (*object)["pose"]["orientation"]["r"].as<double>();
+        double pitch = (*object)["pose"]["orientation"]["p"].as<double>();
+        double yaw   = (*object)["pose"]["orientation"]["y"].as<double>();
+        geometry_msgs::msg::Quaternion quat;
+        as2::frame::eulerToQuaternion(roll, pitch, yaw, quat);
+        static_transform.transform.rotation = quat;
+        staticTfBroadcaster->sendTransform(static_transform);
+
+      } else if ((*object)["type"].as<std::string>() == "gps_static") {
+        if (!origin_set_) {
+          setupGPS();
+          origin_set_ = true;
+        }
+        std::string parent_frame = ((*object)["parent_frame"].IsDefined())
+                                       ? (*object)["parent_frame"].as<std::string>()
+                                       : "earth";
+        std::string frame        = (*object)["frame"].as<std::string>();
+        std::shared_ptr<sensor_msgs::msg::NavSatFix> gps_pose =
+            std::make_shared<sensor_msgs::msg::NavSatFix>();
+        gps_pose->latitude  = (*object)["gps_pose"]["lat"].as<double>();
+        gps_pose->longitude = (*object)["gps_pose"]["lon"].as<double>();
+        gps_pose->altitude  = (*object)["gps_pose"]["alt"].as<double>();
+        float bank          = ((*object)["orientation"]["bank"].IsDefined())
+                                  ? (*object)["orientation"]["bank"].as<float>()
+                                  : 0.0;
+        float elevation     = ((*object)["orientation"]["elevation"].IsDefined())
+                                  ? (*object)["orientation"]["elevation"].as<float>()
+                                  : 0.0;
+        float azimuth       = ((*object)["orientation"]["azimuth"].IsDefined())
+                                  ? (*object)["orientation"]["azimuth"].as<float>()
+                                  : 0.0;
+        geometry_msgs::msg::TransformStamped static_transform;
+        static_transform = gpsToTransform(gps_pose, azimuth, elevation, frame, parent_frame);
+        staticTfBroadcaster->sendTransform(static_transform);
+      }
+
+      else {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Invalid type for object '%s', types are: pose || gps || pose_static || gps_static",
+            type.c_str());
       }
       RCLCPP_INFO(this->get_logger(), "Object '%s' Succesfully loaded from config file",
                   type.c_str());
@@ -231,9 +284,10 @@ void As2ExternalObjectToTf::setupGPS() {
   get_origin_srv_ = this->create_client<as2_msgs::srv::GetOrigin>(
       as2_names::services::gps::get_origin);  // Should be same origin for every drone ?
 
-  while (!get_origin_srv_->wait_for_service(std::chrono::seconds(1))) {
+  while (!get_origin_srv_->wait_for_service(std::chrono::seconds(3))) {
     if (!rclcpp::ok()) {
       RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+      break;
     }
     RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
   }
