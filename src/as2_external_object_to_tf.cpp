@@ -121,13 +121,23 @@ geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthToQuaternion(
 }
 
 geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthPitchToQuaternion(
-    float azimuth,
+    float azimuth   = 0.0,
     float elevation = 0.0) {
   float azimuthRad = azimuth * M_PI / 180.0;
-  azimuthRad -= M_PI / 2;
-  if (azimuthRad < M_PI) {
-    azimuthRad += (2 * M_PI);
+  azimuthRad += M_PI / 2.0;
+  if (azimuthRad > M_PI) {
+    azimuthRad -= 2.0 * M_PI;
+  } else if (azimuthRad < -M_PI) {
+    azimuthRad += 2.0 * M_PI;
   }
+
+  float elevationRad = elevation * M_PI / 180.0;
+  if (elevationRad > M_PI) {
+    elevationRad -= 2.0 * M_PI;
+  } else if (elevationRad < -M_PI) {
+    elevationRad += 2.0 * M_PI;
+  }
+
   // geometry_msgs::msg::Quaternion q;
   // double halfYaw = azimuthRad * 0.5;
   // q.x            = 0.0;
@@ -135,7 +145,7 @@ geometry_msgs::msg::Quaternion As2ExternalObjectToTf::azimuthPitchToQuaternion(
   // q.z            = cos(halfYaw);
   // q.w            = sin(halfYaw);
   geometry_msgs::msg::Quaternion q;
-  as2::frame::eulerToQuaternion(0.0, elevation, -azimuthRad, q);
+  as2::frame::eulerToQuaternion(0.0, elevationRad, azimuthRad, q);
   return q;
 }
 
