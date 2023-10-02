@@ -31,6 +31,15 @@ set(PROJECT_DEPENDENCIES
   tf2_ros
 )
 
+set(SERVICE_DEPENDENCIES
+  as2_msgs
+  std_srvs
+  std_msgs
+  geometry_msgs
+  sensor_msgs
+  builtin_interfaces
+)
+
 foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})
   find_package(${DEPENDENCY} REQUIRED)
 endforeach()
@@ -42,10 +51,10 @@ set(SRVS_FILES
 
 rosidl_generate_interfaces(${PROJECT_NAME}
 ${SRVS_FILES}
-DEPENDENCIES ${PROJECT_DEPENDENCIES}
+DEPENDENCIES ${SERVICE_DEPENDENCIES}
 )
 
-rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+# rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 include_directories(
   include
@@ -60,8 +69,12 @@ set(SOURCE_CPP_FILES
 
 add_executable(${PROJECT_NAME}_node src/as2_external_object_to_tf_node.cpp ${SOURCE_CPP_FILES})
 ament_target_dependencies(${PROJECT_NAME}_node ${PROJECT_DEPENDENCIES})
+
+rosidl_target_interfaces(${PROJECT_NAME}_node
+  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
 target_link_libraries(${PROJECT_NAME}_node yaml-cpp)
-target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}")
+# target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}")
 
 if(BUILD_TESTING)
   find_package(ament_cmake_cppcheck REQUIRED)
