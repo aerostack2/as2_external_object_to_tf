@@ -27,26 +27,25 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 /*!*******************************************************************************************
- *  \file       as2_external_object_to_tf_node.cpp
- *  \brief      External Object to TF main file.
+ *  \file       as2_external_object_to_tf_gtest.hpp
+ *  \brief      External Object to TF test file.
  *  \authors    Javier Melero Deza
  *  \copyright  Copyright (c) 2024 Universidad Politécnica de Madrid
  *              All Rights Reserved
  ********************************************************************************/
+#include <gtest/gtest.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <as2_external_object_to_tf/as2_external_object_to_tf.hpp>
 
-#include "as2_core/core_functions.hpp"
-#include "as2_external_object_to_tf.hpp"
+TEST(As2ExternalObjectToTf, test_constructor) {
+  EXPECT_NO_THROW(
+    std::shared_ptr<As2ExternalObjectToTf> node =
+    std::make_shared<As2ExternalObjectToTf>());
+}
 
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<As2ExternalObjectToTf>();
-  node->preset_loop_frequency(30);  // Node frequency for run and callbacks
-  // Node with only callbacks
-  as2::spinLoop(node);
-  // Node with run
-  // as2::spinLoop(node,std::bind(&As2ExternalObjectToTf::run, node));
-
-  rclcpp::shutdown();
-  return 0;
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
