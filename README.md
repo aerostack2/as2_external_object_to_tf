@@ -45,5 +45,11 @@ objects:
         r: 0.0
         p: 0.0
         y: 1.57
+  - type: mocap
+    rigid_bodies: 
+      - rigid_body: gate_0
+        frame: object_0
+      - rigid_body: gate_1
+        frame: object_0
 ```
 Aditionally, static transformations can be added to the TF tree via services, both defined by a pose or gps data.
